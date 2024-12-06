@@ -14,6 +14,9 @@ module Homebrew
       sig { returns(T::Array[String]) }
       attr_reader :options_only, :flags_only, :remaining
 
+      sig { returns(T::Hash[Symbol, T.untyped]) }
+      attr_accessor :table
+
       sig { void }
       def initialize
         require "cli/named_args"
@@ -56,13 +59,7 @@ module Homebrew
       def build_from_source? = false
 
       sig { returns(T::Boolean) }
-      def cask? = false
-
-      sig { returns(T::Boolean) }
       def force_bottle? = false
-
-      # Defined in extend/os:
-      # def formula; end
 
       sig { returns(T::Boolean) }
       def HEAD? = false
@@ -128,9 +125,11 @@ module Homebrew
 
       sig { returns(T.nilable(Symbol)) }
       def only_formula_or_cask
-        if formula? && !cask?
+        return if !respond_to?(:formula?) && !respond_to?(:cask?)
+
+        if T.unsafe(self).formula? && !T.unsafe(self).cask?
           :formula
-        elsif cask? && !formula?
+        elsif T.unsafe(self).cask? && !T.unsafe(self).formula?
           :cask
         end
       end
@@ -185,25 +184,17 @@ module Homebrew
         @cli_args = []
         @processed_options.each do |short, long|
           option = long || short
-          switch_val = invoke_if_respond_to(:"#{option_to_name(option)}?")
-          flag_val = invoke_if_respond_to(option_to_name(option).to_sym)
-          if switch_val == true || flag_val == true
+          switch = :"#{option_to_name(option)}?"
+          flag = option_to_name(option).to_sym
+          if @table[switch] == true || @table[flag] == true
             @cli_args << option
-          elsif flag_val.instance_of? String
-            @cli_args << "#{option}=#{flag_val}"
-          elsif flag_val.instance_of? Array
-            @cli_args << "#{option}=#{flag_val.join(",")}"
+          elsif @table[flag].instance_of? String
+            @cli_args << "#{option}=#{@table[flag]}"
+          elsif @table[flag].instance_of? Array
+            @cli_args << "#{option}=#{@table[flag].join(",")}"
           end
         end
         @cli_args.freeze
-      end
-
-      # FIXME: This is here for compatibility with the previous implementation that used OpenStruct.
-      # This is for args that need to determine whether they have been set or not, and thus may not support a default
-      # implementation.
-      sig { params(method: Symbol).returns(T.untyped) }
-      def invoke_if_respond_to(method)
-        public_send(method) if respond_to?(method)
       end
     end
   end
